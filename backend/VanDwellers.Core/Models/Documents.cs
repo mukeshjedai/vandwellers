@@ -75,7 +75,20 @@ public record CampsiteDto(
     string Region,
     string Description,
     double Rating,
-    List<string> Amenities);
+    List<string> Amenities,
+    double Latitude,
+    double Longitude);
+
+public record CampsiteDetailDto(
+    string Id,
+    string Name,
+    string Region,
+    string Description,
+    double Rating,
+    List<string> Amenities,
+    double Latitude,
+    double Longitude,
+    List<string> PhotoUrls);
 
 public record CamperUpdateDto(
     string Id,

@@ -5,7 +5,10 @@ class Campsite {
     required this.region,
     required this.description,
     required this.rating,
+    required this.latitude,
+    required this.longitude,
     this.amenities = const [],
+    this.photoUrls = const [],
   });
 
   final String id;
@@ -13,7 +16,10 @@ class Campsite {
   final String region;
   final String description;
   final double rating;
+  final double latitude;
+  final double longitude;
   final List<String> amenities;
+  final List<String> photoUrls;
 
   factory Campsite.fromJson(Map<String, dynamic> json) {
     return Campsite(
@@ -22,7 +28,13 @@ class Campsite {
       region: json['region'] as String? ?? '',
       description: json['description'] as String? ?? '',
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
       amenities: (json['amenities'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      photoUrls: (json['photoUrls'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           const [],

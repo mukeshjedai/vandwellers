@@ -42,17 +42,20 @@ public class VanDwellersApiService
     private readonly IUserRepository _users;
     private readonly IMessageRepository _messages;
     private readonly IPhotoStorage _photos;
+    private readonly ICampsitePhotoRepository _campsitePhotos;
     private readonly JwtTokenService _jwt;
 
     public VanDwellersApiService(
         IUserRepository users,
         IMessageRepository messages,
         IPhotoStorage photos,
+        ICampsitePhotoRepository campsitePhotos,
         JwtTokenService jwt)
     {
         _users = users;
         _messages = messages;
         _photos = photos;
+        _campsitePhotos = campsitePhotos;
         _jwt = jwt;
     }
 
@@ -132,6 +135,38 @@ public class VanDwellersApiService
         _ = userId;
         return Task.FromResult<IEnumerable<CampsiteDto>>(CampsiteCatalog.All);
     }
+
+    public async Task<CampsiteDetailDto> GetCampsiteAsync(string userId, string campsiteId)
+    {
+        _ = await _users.GetByIdAsync(userId) ?? throw new ApiUnauthorizedException();
+        var campsite = CampsiteCatalog.GetById(campsiteId)
+            ?? throw new ApiValidationException("Campsite not found.");
+        var photoUrls = await _campsitePhotos.GetPhotoUrlsAsync(campsiteId);
+        return ToDetailDto(campsite, photoUrls);
+    }
+
+    public async Task<CampsiteDetailDto> UploadCampsitePhotoAsync(
+        string userId, string campsiteId, Stream stream, string fileName, string contentType)
+    {
+        _ = await _users.GetByIdAsync(userId) ?? throw new ApiUnauthorizedException();
+        if (CampsiteCatalog.GetById(campsiteId) == null)
+            throw new ApiValidationException("Campsite not found.");
+        var url = await _photos.UploadAsync(stream, fileName, contentType);
+        await _campsitePhotos.AddPhotoAsync(campsiteId, url);
+        var photoUrls = await _campsitePhotos.GetPhotoUrlsAsync(campsiteId);
+        return ToDetailDto(CampsiteCatalog.GetById(campsiteId)!, photoUrls);
+    }
+
+    private static CampsiteDetailDto ToDetailDto(CampsiteDto campsite, List<string> photoUrls) => new(
+        campsite.Id,
+        campsite.Name,
+        campsite.Region,
+        campsite.Description,
+        campsite.Rating,
+        campsite.Amenities,
+        campsite.Latitude,
+        campsite.Longitude,
+        photoUrls);
 
     public async Task<IEnumerable<CamperUpdateDto>> GetCamperUpdatesAsync(string userId)
     {
