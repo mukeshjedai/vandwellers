@@ -1,0 +1,10 @@
+{
+  "apiUrl": "https://func-vandwellers-mk01.azurewebsites.net",
+  "resourceGroup": "rg-vandwellers-prod",
+  "functionApp": "func-vandwellers-mk01",
+  "cosmosAccount": "cosmosvdwellersmk",
+  "storageAccount": "stvandwellersmk01",
+  "appName": "Van Dwellers",
+  "packageId": "com.vandwellers.app",
+  "deployedAt": "2026-07-07T14:42:00Z"
+}

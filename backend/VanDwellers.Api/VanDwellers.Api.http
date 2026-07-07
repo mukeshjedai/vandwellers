@@ -1,0 +1,6 @@
+@VanDwellers.Api_HostAddress = http://localhost:5004
+
+GET {{VanDwellers.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
