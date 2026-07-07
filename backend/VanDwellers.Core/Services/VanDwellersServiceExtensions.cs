@@ -10,6 +10,7 @@ public static class VanDwellersServiceExtensions
     {
         services.AddSingleton<JwtTokenService>();
         services.AddSingleton<VanDwellersApiService>();
+        services.AddSingleton<ICampsitePhotoRepository, CampsitePhotoStore>();
 
         var cosmosConnection = config["Azure:CosmosDb:ConnectionString"];
         var blobConnection = ResolveBlobConnectionString(config);

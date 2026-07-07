@@ -6,7 +6,9 @@ import '../models/chat_message.dart';
 import '../models/user_profile.dart';
 import '../services/media_service.dart';
 import '../services/van_dwellers_api.dart';
+import '../widgets/campsites_map.dart';
 import '../widgets/van_dwellers_logo.dart';
+import 'campsite_detail_screen.dart';
 import 'chat_screen.dart';
 import 'profile_screen.dart';
 
@@ -133,6 +135,14 @@ class _HomeTabState extends State<HomeTab> {
     }
   }
 
+  void _openCampsite(Campsite campsite) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CampsiteDetailScreen(campsiteId: campsite.id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = widget.user?.displayName ?? 'Traveler';
@@ -163,13 +173,24 @@ class _HomeTabState extends State<HomeTab> {
                           color: Colors.white70,
                         ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
+                  if (_campsites.isNotEmpty)
+                    CampsitesMap(
+                      campsites: _campsites,
+                      onCampsiteTap: _openCampsite,
+                    ),
+                  const SizedBox(height: 24),
                   Text('Campsites', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   if (_campsites.isEmpty)
                     const _EmptySection(message: 'No campsites listed yet.')
                   else
-                    ..._campsites.map((site) => _CampsiteCard(campsite: site)),
+                    ..._campsites.map(
+                      (site) => _CampsiteCard(
+                        campsite: site,
+                        onTap: () => _openCampsite(site),
+                      ),
+                    ),
                   const SizedBox(height: 28),
                   Text(
                     'Recent from campers',
@@ -292,81 +313,93 @@ class _OthersTabState extends State<OthersTab> {
 }
 
 class _CampsiteCard extends StatelessWidget {
-  const _CampsiteCard({required this.campsite});
+  const _CampsiteCard({required this.campsite, required this.onTap});
 
   final Campsite campsite;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.terrain,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        campsite.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        campsite.region,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.star,
-                      size: 16,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.terrain,
                       color: Theme.of(context).colorScheme.primary,
                     ),
-                    const SizedBox(width: 4),
-                    Text(campsite.rating.toStringAsFixed(1)),
-                  ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          campsite.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          campsite.region,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.star,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(campsite.rating.toStringAsFixed(1)),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, color: Colors.white54),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                campsite.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (campsite.amenities.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: campsite.amenities
+                      .take(3)
+                      .map(
+                        (amenity) => Chip(
+                          label: Text(amenity),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text(campsite.description),
-            if (campsite.amenities.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: campsite.amenities
-                    .map(
-                      (amenity) => Chip(
-                        label: Text(amenity),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    )
-                    .toList(),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

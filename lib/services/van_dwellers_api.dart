@@ -134,6 +134,32 @@ class VanDwellersApi {
         .toList();
   }
 
+  Future<Campsite> getCampsite(String campsiteId) async {
+    final response = await http.get(
+      Uri.parse('$_base/api/campsites/$campsiteId'),
+      headers: await _headers(),
+    );
+    _ensureOk(response);
+    return Campsite.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Campsite> uploadCampsitePhoto({
+    required String campsiteId,
+    required File file,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_base/api/campsites/$campsiteId/photos'),
+    );
+    final token = await AuthService.instance.getToken();
+    if (token != null) request.headers['Authorization'] = 'Bearer $token';
+    request.files.add(await http.MultipartFile.fromPath('file', file.path));
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    _ensureOk(response);
+    return Campsite.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<CamperUpdate>> getCamperUpdates() async {
     final response = await http.get(
       Uri.parse('$_base/api/updates'),
