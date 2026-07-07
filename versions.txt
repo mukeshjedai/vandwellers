@@ -1,1 +1,2 @@
-1
+2
+https://github.com/mukeshjedai/vandwellers/releases/download/v2/VanDwellers-release.apk
