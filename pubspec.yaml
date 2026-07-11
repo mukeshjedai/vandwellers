@@ -2,7 +2,7 @@ name: van_dwellers
 description: "Van Dwellers — community app for van life travelers."
 publish_to: 'none'
 
-version: 3.0.0+3
+version: 3.0.0+4
 
 environment:
   sdk: ^3.11.4
@@ -20,6 +20,8 @@ dependencies:
   package_info_plus: ^8.3.0
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.1
+  path_provider: ^2.1.5
+  open_filex: ^4.7.0
   flutter_map: ^8.1.1
   latlong2: ^0.9.1
 

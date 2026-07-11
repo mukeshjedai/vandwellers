@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/version_config.dart';
+import '../services/apk_update_service.dart';
 import '../services/version_update_service.dart';
 
 /// Wraps the app and periodically checks GitHub [versions.txt] for updates.
@@ -87,13 +90,10 @@ class _UpdateCheckerState extends State<UpdateChecker>
           ),
           FilledButton(
             onPressed: () async {
-              final url = Uri.parse(
-                result.downloadUrl ?? VersionConfig.defaultDownloadUrl,
-              );
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              }
-              if (ctx.mounted) Navigator.of(ctx).pop();
+              final url =
+                  result.downloadUrl ?? VersionConfig.defaultDownloadUrl;
+              Navigator.of(ctx).pop();
+              await _startUpdate(url);
             },
             child: const Text('Update'),
           ),
@@ -101,6 +101,140 @@ class _UpdateCheckerState extends State<UpdateChecker>
       ),
     );
     if (mounted) _dialogVisible = false;
+  }
+
+  Future<void> _startUpdate(String url) async {
+    if (!mounted) return;
+
+    if (!Platform.isAndroid || !_isDirectApkUrl(url)) {
+      await _openInBrowser(url);
+      return;
+    }
+
+    final progressNotifier = ValueNotifier<double>(0);
+    if (!mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => ValueListenableBuilder<double>(
+        valueListenable: progressNotifier,
+        builder: (context, value, _) {
+          return AlertDialog(
+            title: const Text('Downloading update'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: value > 0 ? value : null),
+                const SizedBox(height: 12),
+                Text(
+                  value > 0
+                      ? '${(value * 100).round()}%'
+                      : 'Starting download…',
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    final status = await ApkUpdateService.instance.downloadAndInstall(
+      url,
+      onProgress: (value) => progressNotifier.value = value,
+    );
+
+    progressNotifier.dispose();
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (!mounted) return;
+
+    switch (status) {
+      case ApkUpdateStatus.success:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Follow the prompts to install the update.'),
+          ),
+        );
+      case ApkUpdateStatus.permissionDenied:
+        await _showInstallPermissionHelp(url);
+      case ApkUpdateStatus.downloadFailed:
+      case ApkUpdateStatus.installFailed:
+        await _showUpdateFailed(url);
+      case ApkUpdateStatus.notAndroid:
+        await _openInBrowser(url);
+    }
+  }
+
+  bool _isDirectApkUrl(String url) =>
+      url.toLowerCase().endsWith('.apk') ||
+      url.contains('/releases/download/');
+
+  Future<void> _showInstallPermissionHelp(String url) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Install permission needed'),
+        content: const Text(
+          'Allow Van Dwellers to install updates, then tap Update again.\n\n'
+          'Settings → Install unknown apps → Van Dwellers → Allow.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await openAppSettings();
+            },
+            child: const Text('Open settings'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _openInBrowser(url);
+            },
+            child: const Text('Download in browser'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showUpdateFailed(String url) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update failed'),
+        content: const Text(
+          'Could not download or install the update automatically.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _openInBrowser(url);
+            },
+            child: const Text('Open in browser'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openInBrowser(String url) async {
+    final uri = Uri.parse(url);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
