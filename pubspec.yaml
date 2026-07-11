@@ -2,7 +2,7 @@ name: van_dwellers
 description: "Van Dwellers — community app for van life travelers."
 publish_to: 'none'
 
-version: 3.0.0+2
+version: 3.0.0+3
 
 environment:
   sdk: ^3.11.4
