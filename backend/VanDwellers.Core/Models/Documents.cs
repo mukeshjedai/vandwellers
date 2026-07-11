@@ -24,6 +24,23 @@ public class MessageDocument
     public DateTime SentAt { get; set; } = DateTime.UtcNow;
 }
 
+public class CampsiteDocument
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Title { get; set; } = string.Empty;
+    public string Region { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public double Rating { get; set; } = 4.0;
+    public List<string> Amenities { get; set; } = [];
+    public bool HasToilet { get; set; }
+    public bool HasTap { get; set; }
+    public List<string> PhotoUrls { get; set; } = [];
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public record RegisterRequest(
     string Username,
     string Password,
@@ -71,11 +88,24 @@ public record MessageDto(
 
 public record CampsiteDto(
     string Id,
-    string Name,
+    string Title,
     string Region,
     string Description,
     double Rating,
-    List<string> Amenities);
+    List<string> Amenities,
+    double Latitude,
+    double Longitude,
+    bool HasToilet,
+    bool HasTap,
+    List<string> PhotoUrls);
+
+public record CreateCampsiteRequest(
+    string Title,
+    string Description,
+    double Latitude,
+    double Longitude,
+    bool HasToilet,
+    bool HasTap);
 
 public record CamperUpdateDto(
     string Id,

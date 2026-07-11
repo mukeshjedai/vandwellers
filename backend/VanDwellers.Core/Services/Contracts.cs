@@ -23,6 +23,12 @@ public interface IPhotoStorage
     Task<string> UploadAsync(Stream stream, string fileName, string contentType, CancellationToken ct = default);
 }
 
+public interface ICampsiteRepository
+{
+    Task<List<CampsiteDocument>> ListAllAsync(CancellationToken ct = default);
+    Task CreateAsync(CampsiteDocument campsite, CancellationToken ct = default);
+}
+
 public static class ConversationHelper
 {
     public static string BuildId(string userA, string userB)
@@ -51,4 +57,17 @@ public static class UserMapper
         user.HomeBase,
         user.PhotoUrls,
         user.CreatedAt);
+
+    public static CampsiteDto ToDto(CampsiteDocument campsite) => new(
+        campsite.Id,
+        campsite.Title,
+        campsite.Region,
+        campsite.Description,
+        campsite.Rating,
+        campsite.Amenities,
+        campsite.Latitude,
+        campsite.Longitude,
+        campsite.HasToilet,
+        campsite.HasTap,
+        campsite.PhotoUrls);
 }

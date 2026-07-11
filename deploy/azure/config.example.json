@@ -1,0 +1,10 @@
+{
+  "resourceGroup": "rg-vandwellers-prod",
+  "location": "australiaeast",
+  "cosmosAccount": "YOUR_COSMOS_ACCOUNT",
+  "storageAccount": "YOUR_STORAGE_ACCOUNT",
+  "functionApp": "YOUR_FUNCTION_APP",
+  "apiUrl": "https://YOUR_FUNCTION_APP.azurewebsites.net",
+  "githubRemote": "https://github.com/YOUR_USER/vandwellers.git",
+  "githubBranch": "main"
+}

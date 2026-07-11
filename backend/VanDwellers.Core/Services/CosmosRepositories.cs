@@ -113,3 +113,33 @@ public class CosmosMessageRepository : IMessageRepository
         return results;
     }
 }
+
+public class CosmosCampsiteRepository : ICampsiteRepository
+{
+    private readonly Container _container;
+
+    public CosmosCampsiteRepository(CosmosClient client, IConfiguration config)
+    {
+        var db = config["Azure:CosmosDb:DatabaseName"] ?? "VanDwellers";
+        var container = config["Azure:CosmosDb:CampsitesContainer"] ?? "campsites";
+        _container = client.GetContainer(db, container);
+    }
+
+    public async Task<List<CampsiteDocument>> ListAllAsync(CancellationToken ct = default)
+    {
+        var query = new QueryDefinition("SELECT * FROM c");
+        var results = new List<CampsiteDocument>();
+        using var iterator = _container.GetItemQueryIterator<CampsiteDocument>(query);
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(ct);
+            results.AddRange(page);
+        }
+        return results.OrderByDescending(c => c.CreatedAt).ToList();
+    }
+
+    public async Task CreateAsync(CampsiteDocument campsite, CancellationToken ct = default)
+    {
+        await _container.CreateItemAsync(campsite, new PartitionKey(campsite.Id), cancellationToken: ct);
+    }
+}

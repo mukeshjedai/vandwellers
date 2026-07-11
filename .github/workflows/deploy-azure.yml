@@ -1,0 +1,42 @@
+name: Deploy Azure Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "deploy/azure/**"
+      - ".github/workflows/deploy-azure.yml"
+  workflow_dispatch:
+
+env:
+  FUNCTION_APP: func-vandwellers-mk01
+  DOTNET_VERSION: "9.0.x"
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build backend
+        run: dotnet build -c Release
+        working-directory: backend/VanDwellers.Functions
+
+      - name: Publish to Azure Functions
+        run: func azure functionapp publish ${{ env.FUNCTION_APP }} --dotnet-isolated
+        working-directory: backend/VanDwellers.Functions

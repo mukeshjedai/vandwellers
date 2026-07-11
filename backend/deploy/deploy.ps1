@@ -55,6 +55,14 @@ az cosmosdb sql container create `
     --partition-key-path "/conversationId" `
     --output none
 
+az cosmosdb sql container create `
+    --account-name $CosmosAccount `
+    --resource-group $ResourceGroup `
+    --database-name VanDwellers `
+    --name campsites `
+    --partition-key-path "/id" `
+    --output none
+
 Write-Host "Creating storage account..."
 az storage account create `
     --name $StorageAccount `
@@ -99,6 +107,7 @@ az functionapp config appsettings set `
         "Azure__CosmosDb__DatabaseName=VanDwellers" `
         "Azure__CosmosDb__UsersContainer=users" `
         "Azure__CosmosDb__MessagesContainer=messages" `
+        "Azure__CosmosDb__CampsitesContainer=campsites" `
         "Azure__BlobStorage__ConnectionString=$blobConn" `
         "Azure__BlobStorage__ContainerName=photos" `
         "Jwt__Key=$jwtKey" `

@@ -30,4 +30,15 @@ class MediaService {
     if (picked == null) return null;
     return File(picked.path);
   }
+
+  Future<List<File>> pickPhotos({ImageSource source = ImageSource.gallery}) async {
+    final allowed = await ensurePhotosPermission();
+    if (!allowed) return [];
+
+    final picked = await _picker.pickMultiImage(
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    return picked.map((item) => File(item.path)).toList();
+  }
 }

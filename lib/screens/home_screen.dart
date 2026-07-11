@@ -1,11 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/campsite.dart';
 import '../models/chat_message.dart';
 import '../models/user_profile.dart';
 import '../services/media_service.dart';
 import '../services/van_dwellers_api.dart';
+import '../widgets/campsite_map.dart';
 import '../widgets/van_dwellers_logo.dart';
 import 'chat_screen.dart';
 import 'profile_screen.dart';
@@ -107,6 +111,14 @@ class _HomeTabState extends State<HomeTab> {
   List<Campsite> _campsites = [];
   List<CamperUpdate> _updates = [];
   bool _loading = true;
+  bool _pickLocationMode = false;
+  final _pendingLocation = ValueNotifier<LatLng?>(null);
+
+  @override
+  void dispose() {
+    _pendingLocation.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -130,6 +142,36 @@ class _HomeTabState extends State<HomeTab> {
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _onMapTap(LatLng point) {
+    if (!_pickLocationMode) return;
+    _pendingLocation.value = point;
+  }
+
+  Future<void> _openAddLocationSheet() async {
+    setState(() => _pickLocationMode = true);
+    _pendingLocation.value ??= const LatLng(-25.27, 133.77);
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _AddLocationSheet(
+        pendingLocation: _pendingLocation,
+        onSaved: () async {
+          setState(() => _pickLocationMode = false);
+          _pendingLocation.value = null;
+          await _load();
+        },
+      ),
+    );
+
+    if (mounted) {
+      setState(() => _pickLocationMode = false);
+      _pendingLocation.value = null;
     }
   }
 
@@ -163,6 +205,24 @@ class _HomeTabState extends State<HomeTab> {
                           color: Colors.white70,
                         ),
                   ),
+                  const SizedBox(height: 20),
+                  Text('Map', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 280,
+                    child: ValueListenableBuilder<LatLng?>(
+                      valueListenable: _pendingLocation,
+                      builder: (context, pending, _) {
+                        return CampsiteMap(
+                          campsites: _campsites,
+                          pickMode: _pickLocationMode,
+                          pendingLocation: pending,
+                          onTap: _onMapTap,
+                          onAddPressed: _openAddLocationSheet,
+                        );
+                      },
+                    ),
+                  ),
                   const SizedBox(height: 28),
                   Text('Campsites', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
@@ -183,6 +243,194 @@ class _HomeTabState extends State<HomeTab> {
                 ],
               ),
       ),
+    );
+  }
+}
+
+class _AddLocationSheet extends StatefulWidget {
+  const _AddLocationSheet({
+    required this.pendingLocation,
+    required this.onSaved,
+  });
+
+  final ValueNotifier<LatLng?> pendingLocation;
+  final Future<void> Function() onSaved;
+
+  @override
+  State<_AddLocationSheet> createState() => _AddLocationSheetState();
+}
+
+class _AddLocationSheetState extends State<_AddLocationSheet> {
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _photos = <File>[];
+  bool _hasToilet = false;
+  bool _hasTap = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhotos() async {
+    final picked = await MediaService.instance.pickPhotos();
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _photos.addAll(picked));
+  }
+
+  Future<void> _save() async {
+    final location = widget.pendingLocation.value;
+    if (location == null) return;
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Title is required.')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await VanDwellersApi.instance.createCampsite(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        hasToilet: _hasToilet,
+        hasTap: _hasTap,
+        photos: _photos,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      await widget.onSaved();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Campsite added')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (_) {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return ValueListenableBuilder<LatLng?>(
+      valueListenable: widget.pendingLocation,
+      builder: (context, location, _) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Add campsite', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap the map to place a pin, then add details and photos.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white70,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(labelText: 'Title *'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _descriptionController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Description'),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Toilet available'),
+                  value: _hasToilet,
+                  onChanged: _saving ? null : (v) => setState(() => _hasToilet = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tap water available'),
+                  value: _hasTap,
+                  onChanged: _saving ? null : (v) => setState(() => _hasTap = v),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _pickPhotos,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Add photos'),
+                ),
+                if (_photos.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 88,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _photos.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                _photos[index],
+                                width: 88,
+                                height: 88,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: IconButton(
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black54,
+                                ),
+                                icon: const Icon(Icons.close, size: 16),
+                                onPressed: _saving
+                                    ? null
+                                    : () => setState(() => _photos.removeAt(index)),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (location != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Pin: ${location.latitude.toStringAsFixed(4)}, '
+                    '${location.longitude.toStringAsFixed(4)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _saving || location == null ? null : _save,
+                  child: Text(_saving ? 'Saving…' : 'Save campsite'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -321,16 +569,31 @@ class _CampsiteCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        campsite.name,
+                        campsite.title,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        campsite.region,
-                        style: const TextStyle(color: Colors.white70),
+                      if (campsite.region.isNotEmpty)
+                        Text(
+                          campsite.region,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          _FacilityChip(
+                            label: 'Toilet',
+                            available: campsite.hasToilet,
+                          ),
+                          _FacilityChip(
+                            label: 'Tap',
+                            available: campsite.hasTap,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -350,6 +613,35 @@ class _CampsiteCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(campsite.description),
+            if (campsite.photoUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 96,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: campsite.photoUrls.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        campsite.photoUrls[index],
+                        width: 96,
+                        height: 96,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 96,
+                          height: 96,
+                          color: Colors.white12,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             if (campsite.amenities.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
@@ -369,6 +661,23 @@ class _CampsiteCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FacilityChip extends StatelessWidget {
+  const _FacilityChip({required this.label, required this.available});
+
+  final String label;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text('$label: ${available ? 'Yes' : 'No'}'),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      backgroundColor: available ? Colors.green.withValues(alpha: 0.2) : null,
     );
   }
 }

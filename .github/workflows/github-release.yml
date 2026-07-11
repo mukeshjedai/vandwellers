@@ -1,0 +1,64 @@
+name: GitHub Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_build:
+        description: "Build number for versions.txt (e.g. 3)"
+        required: true
+        type: string
+      tag:
+        description: "Git tag (e.g. v3)"
+        required: true
+        type: string
+      release_notes:
+        description: "Release notes"
+        required: false
+        default: "Van Dwellers update."
+        type: string
+
+env:
+  API_BASE_URL: https://func-vandwellers-mk01.azurewebsites.net
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build release APK
+        run: |
+          flutter pub get
+          flutter build apk --release --dart-define=API_BASE_URL=${{ env.API_BASE_URL }}
+          copy build\app\outputs\flutter-apk\app-release.apk VanDwellers-release.apk
+
+      - name: Update versions.txt
+        shell: pwsh
+        run: |
+          $build = "${{ github.event.inputs.version_build }}"
+          $tag = "${{ github.event.inputs.tag }}"
+          $url = "https://github.com/mukeshjedai/vandwellers/releases/download/$tag/VanDwellers-release.apk"
+          @($build, $url) | Set-Content versions.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add versions.txt
+          git commit -m "Bump versions.txt to $build for $tag" || echo "No versions.txt change"
+          git push
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: Van Dwellers ${{ github.event.inputs.tag }}
+          body: ${{ github.event.inputs.release_notes }}
+          files: VanDwellers-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

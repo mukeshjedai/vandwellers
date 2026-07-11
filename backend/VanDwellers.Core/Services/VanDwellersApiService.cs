@@ -42,17 +42,20 @@ public class VanDwellersApiService
     private readonly IUserRepository _users;
     private readonly IMessageRepository _messages;
     private readonly IPhotoStorage _photos;
+    private readonly ICampsiteRepository _campsites;
     private readonly JwtTokenService _jwt;
 
     public VanDwellersApiService(
         IUserRepository users,
         IMessageRepository messages,
         IPhotoStorage photos,
+        ICampsiteRepository campsites,
         JwtTokenService jwt)
     {
         _users = users;
         _messages = messages;
         _photos = photos;
+        _campsites = campsites;
         _jwt = jwt;
     }
 
@@ -127,10 +130,66 @@ public class VanDwellersApiService
     public async Task<UserProfileDto?> GetUserAsync(string id) =>
         (await _users.GetByIdAsync(id)) is { } user ? UserMapper.ToDto(user) : null;
 
-    public Task<IEnumerable<CampsiteDto>> ListCampsitesAsync(string userId)
+    public async Task<IEnumerable<CampsiteDto>> ListCampsitesAsync(string userId)
     {
-        _ = userId;
-        return Task.FromResult<IEnumerable<CampsiteDto>>(CampsiteCatalog.All);
+        _ = await _users.GetByIdAsync(userId) ?? throw new ApiUnauthorizedException();
+        var userSites = await _campsites.ListAllAsync();
+        var merged = CampsiteCatalog.All
+            .Concat(userSites.Select(UserMapper.ToDto))
+            .ToList();
+        return merged;
+    }
+
+    public async Task<CampsiteDto> CreateCampsiteAsync(
+        string userId,
+        CreateCampsiteRequest request,
+        IEnumerable<(Stream Stream, string FileName, string ContentType)>? photos = null)
+    {
+        _ = await _users.GetByIdAsync(userId) ?? throw new ApiUnauthorizedException();
+        if (string.IsNullOrWhiteSpace(request.Title))
+            throw new ApiValidationException("Title is required.");
+        if (request.Latitude is < -90 or > 90 || request.Longitude is < -180 or > 180)
+            throw new ApiValidationException("Invalid map coordinates.");
+
+        var photoUrls = new List<string>();
+        if (photos != null)
+        {
+            foreach (var photo in photos)
+            {
+                try
+                {
+                    var url = await _photos.UploadAsync(photo.Stream, photo.FileName, photo.ContentType);
+                    photoUrls.Add(url);
+                }
+                finally
+                {
+                    await photo.Stream.DisposeAsync();
+                }
+            }
+        }
+
+        var campsite = new CampsiteDocument
+        {
+            Title = request.Title.Trim(),
+            Description = request.Description.Trim(),
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
+            HasToilet = request.HasToilet,
+            HasTap = request.HasTap,
+            PhotoUrls = photoUrls,
+            CreatedByUserId = userId,
+            Amenities = BuildAmenities(request.HasToilet, request.HasTap),
+        };
+        await _campsites.CreateAsync(campsite);
+        return UserMapper.ToDto(campsite);
+    }
+
+    private static List<string> BuildAmenities(bool hasToilet, bool hasTap)
+    {
+        var amenities = new List<string> { "Community added" };
+        if (hasToilet) amenities.Add("Toilet");
+        if (hasTap) amenities.Add("Tap");
+        return amenities;
     }
 
     public async Task<IEnumerable<CamperUpdateDto>> GetCamperUpdatesAsync(string userId)

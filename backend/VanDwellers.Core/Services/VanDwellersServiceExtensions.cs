@@ -26,12 +26,14 @@ public static class VanDwellersServiceExtensions
             }));
             services.AddSingleton<IUserRepository, CosmosUserRepository>();
             services.AddSingleton<IMessageRepository, CosmosMessageRepository>();
+            services.AddSingleton<ICampsiteRepository, CosmosCampsiteRepository>();
         }
         else if (useLocalFallback)
         {
             services.AddSingleton<LocalJsonStore>();
             services.AddSingleton<IUserRepository>(sp => sp.GetRequiredService<LocalJsonStore>());
             services.AddSingleton<IMessageRepository>(sp => sp.GetRequiredService<LocalJsonStore>());
+            services.AddSingleton<ICampsiteRepository, LocalCampsiteRepository>();
         }
         else
         {
