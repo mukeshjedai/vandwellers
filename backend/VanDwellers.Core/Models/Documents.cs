@@ -105,7 +105,8 @@ public record CreateCampsiteRequest(
     double Latitude,
     double Longitude,
     bool HasToilet,
-    bool HasTap);
+    bool HasTap,
+    string? Address = null);
 
 public record CamperUpdateDto(
     string Id,

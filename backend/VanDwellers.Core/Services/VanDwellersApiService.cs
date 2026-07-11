@@ -171,6 +171,7 @@ public class VanDwellersApiService
         var campsite = new CampsiteDocument
         {
             Title = request.Title.Trim(),
+            Region = request.Address?.Trim() ?? string.Empty,
             Description = request.Description.Trim(),
             Latitude = request.Latitude,
             Longitude = request.Longitude,

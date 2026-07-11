@@ -1,18 +1,19 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../models/campsite.dart';
 import '../models/chat_message.dart';
 import '../models/user_profile.dart';
 import '../services/media_service.dart';
+import '../services/google_places_service.dart';
 import '../services/location_service.dart';
 import '../services/van_dwellers_api.dart';
 import '../widgets/campsite_map.dart';
 import '../widgets/campsite_tags.dart';
+import '../widgets/google_address_field.dart';
 import '../widgets/van_dwellers_logo.dart';
 import 'chat_screen.dart';
 import 'profile_screen.dart';
@@ -48,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       HomeTab(user: _user),
       const InboxTab(),
-      OthersTab(
+      FeedTab(
         user: _user,
         onOpenInbox: () => _goToTab(1),
         onOpenProfile: () => _goToTab(3),
@@ -77,9 +78,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Inbox',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.explore_outlined),
-            activeIcon: Icon(Icons.explore),
-            label: 'Others',
+            icon: Icon(Icons.dynamic_feed_outlined),
+            activeIcon: Icon(Icons.dynamic_feed),
+            label: 'Feed',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
@@ -102,9 +103,8 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
-  final _mapController = MapController();
+  GoogleMapController? _mapController;
   List<Campsite> _campsites = [];
-  List<CamperUpdate> _updates = [];
   bool _loading = true;
   bool _pickLocationMode = false;
   String? _selectedTag;
@@ -115,7 +115,7 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void dispose() {
     _pendingLocation.dispose();
-    _mapController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -145,14 +145,10 @@ class _HomeTabState extends State<HomeTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final results = await Future.wait([
-        VanDwellersApi.instance.getCampsites(),
-        VanDwellersApi.instance.getCamperUpdates(),
-      ]);
+      final campsites = await VanDwellersApi.instance.getCampsites();
       if (mounted) {
         setState(() {
-          _campsites = results[0] as List<Campsite>;
-          _updates = results[1] as List<CamperUpdate>;
+          _campsites = campsites;
           _loading = false;
         });
       }
@@ -170,7 +166,12 @@ class _HomeTabState extends State<HomeTab> {
   void _focusCampsite(Campsite site) {
     if (site.latitude == 0 && site.longitude == 0) return;
     setState(() => _selectedCampsiteId = site.id);
-    _mapController.move(LatLng(site.latitude, site.longitude), 14);
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(site.latitude, site.longitude),
+        14,
+      ),
+    );
   }
 
   Future<void> _goToMyLocation() async {
@@ -185,7 +186,15 @@ class _HomeTabState extends State<HomeTab> {
       return;
     }
     setState(() => _currentLocation = location);
-    _mapController.move(location, 13);
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(location, 13),
+    );
+  }
+
+  void _onAddressSelectedFromSheet(ValidatedAddress address) {
+    final point = LatLng(address.latitude, address.longitude);
+    _pendingLocation.value = point;
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(point, 14));
   }
 
   Future<void> _openAddLocationSheet() async {
@@ -199,6 +208,7 @@ class _HomeTabState extends State<HomeTab> {
       showDragHandle: true,
       builder: (ctx) => _AddLocationSheet(
         pendingLocation: _pendingLocation,
+        onAddressSelected: _onAddressSelectedFromSheet,
         onSaved: () async {
           setState(() => _pickLocationMode = false);
           _pendingLocation.value = null;
@@ -227,7 +237,7 @@ class _HomeTabState extends State<HomeTab> {
               valueListenable: _pendingLocation,
               builder: (context, pending, _) {
                 return CampsiteMap(
-                  mapController: _mapController,
+                  onMapCreated: (controller) => _mapController = controller,
                   campsites: filtered,
                   pickMode: _pickLocationMode,
                   pendingLocation: pending,
@@ -398,23 +408,6 @@ class _HomeTabState extends State<HomeTab> {
                                         selected: _selectedCampsiteId == site.id,
                                       ),
                                     ),
-                                  const SizedBox(height: 24),
-                                  Text(
-                                    'Recent from campers',
-                                    style:
-                                        Theme.of(context).textTheme.titleLarge,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  if (_updates.isEmpty)
-                                    const _EmptySection(
-                                      message:
-                                          'No updates from other campers yet.',
-                                    )
-                                  else
-                                    ..._updates.map(
-                                      (update) =>
-                                          _CamperUpdateCard(update: update),
-                                    ),
                                 ],
                               ),
                       ),
@@ -433,10 +426,12 @@ class _HomeTabState extends State<HomeTab> {
 class _AddLocationSheet extends StatefulWidget {
   const _AddLocationSheet({
     required this.pendingLocation,
+    required this.onAddressSelected,
     required this.onSaved,
   });
 
   final ValueNotifier<LatLng?> pendingLocation;
+  final ValueChanged<ValidatedAddress> onAddressSelected;
   final Future<void> Function() onSaved;
 
   @override
@@ -445,17 +440,47 @@ class _AddLocationSheet extends StatefulWidget {
 
 class _AddLocationSheetState extends State<_AddLocationSheet> {
   final _titleController = TextEditingController();
+  final _addressController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _photos = <File>[];
   bool _hasToilet = false;
   bool _hasTap = false;
   bool _saving = false;
+  bool _addressValidated = false;
+  bool _reverseGeocoding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.pendingLocation.addListener(_onPinMoved);
+  }
 
   @override
   void dispose() {
+    widget.pendingLocation.removeListener(_onPinMoved);
     _titleController.dispose();
+    _addressController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onPinMoved() async {
+    if (_reverseGeocoding || _saving) return;
+    final location = widget.pendingLocation.value;
+    if (location == null) return;
+
+    _reverseGeocoding = true;
+    final validated = await GooglePlacesService.instance.reverseGeocode(
+      location.latitude,
+      location.longitude,
+    );
+    _reverseGeocoding = false;
+
+    if (!mounted || validated == null) return;
+    setState(() {
+      _addressController.text = validated.formattedAddress;
+      _addressValidated = true;
+    });
   }
 
   Future<void> _pickPhotos() async {
@@ -465,19 +490,48 @@ class _AddLocationSheetState extends State<_AddLocationSheet> {
   }
 
   Future<void> _save() async {
-    final location = widget.pendingLocation.value;
-    if (location == null) return;
+    var location = widget.pendingLocation.value;
+    if (location == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a location on the map or enter an address.')),
+      );
+      return;
+    }
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Title is required.')),
       );
       return;
     }
+
     setState(() => _saving = true);
+
+    var address = _addressController.text.trim();
+    if (address.isNotEmpty && !_addressValidated) {
+      final validated = await GooglePlacesService.instance.geocodeAddress(address);
+      if (validated == null) {
+        if (mounted) {
+          setState(() => _saving = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Address not found. Pick a Google Maps suggestion.'),
+            ),
+          );
+        }
+        return;
+      }
+      address = validated.formattedAddress;
+      location = LatLng(validated.latitude, validated.longitude);
+      widget.pendingLocation.value = location;
+      _addressController.text = address;
+      _addressValidated = true;
+    }
+
     try {
       await VanDwellersApi.instance.createCampsite(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
+        address: address,
         latitude: location.latitude,
         longitude: location.longitude,
         hasToilet: _hasToilet,
@@ -520,7 +574,7 @@ class _AddLocationSheetState extends State<_AddLocationSheet> {
                 Text('Add campsite', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
                 Text(
-                  'Tap the map to place a pin, then add details and photos.',
+                  'Search an address or tap the map to place a pin.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white70,
                       ),
@@ -530,6 +584,36 @@ class _AddLocationSheetState extends State<_AddLocationSheet> {
                   controller: _titleController,
                   decoration: const InputDecoration(labelText: 'Title *'),
                 ),
+                const SizedBox(height: 12),
+                GoogleAddressField(
+                  controller: _addressController,
+                  enabled: !_saving,
+                  onChanged: () => setState(() => _addressValidated = false),
+                  onAddressSelected: (address) {
+                    setState(() => _addressValidated = true);
+                    widget.onAddressSelected(address);
+                  },
+                ),
+                if (_addressValidated && _addressController.text.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Address verified with Google Maps',
+                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _descriptionController,
@@ -618,8 +702,8 @@ class _AddLocationSheetState extends State<_AddLocationSheet> {
   }
 }
 
-class OthersTab extends StatefulWidget {
-  const OthersTab({
+class FeedTab extends StatefulWidget {
+  const FeedTab({
     super.key,
     required this.user,
     required this.onOpenInbox,
@@ -631,11 +715,12 @@ class OthersTab extends StatefulWidget {
   final VoidCallback onOpenProfile;
 
   @override
-  State<OthersTab> createState() => _OthersTabState();
+  State<FeedTab> createState() => _FeedTabState();
 }
 
-class _OthersTabState extends State<OthersTab> {
+class _FeedTabState extends State<FeedTab> {
   List<UserProfile> _users = [];
+  List<CamperUpdate> _updates = [];
   bool _loading = true;
 
   @override
@@ -647,10 +732,14 @@ class _OthersTabState extends State<OthersTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final users = await VanDwellersApi.instance.discoverUsers();
+      final results = await Future.wait([
+        VanDwellersApi.instance.discoverUsers(),
+        VanDwellersApi.instance.getCamperUpdates(),
+      ]);
       if (mounted) {
         setState(() {
-          _users = users;
+          _users = results[0] as List<UserProfile>;
+          _updates = results[1] as List<CamperUpdate>;
           _loading = false;
         });
       }
@@ -681,20 +770,36 @@ class _OthersTabState extends State<OthersTab> {
     final name = widget.user?.displayName ?? 'Traveler';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Others')),
+      appBar: AppBar(title: const Text('Feed')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.all(20),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            const Center(child: VanDwellersLogo(size: 80)),
-            const SizedBox(height: 16),
+            Text(
+              'Recent from campers',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            if (_loading && _updates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_updates.isEmpty)
+              const _EmptySection(
+                message: 'No updates from other campers yet.',
+              )
+            else
+              ..._updates.map((update) => _CamperUpdateCard(update: update)),
+            const SizedBox(height: 28),
             Text(
               'Welcome, $name',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
             ),
+            const SizedBox(height: 16),
+            const Center(child: VanDwellersLogo(size: 72)),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -724,7 +829,7 @@ class _OthersTabState extends State<OthersTab> {
             const SizedBox(height: 28),
             Text('Van dwellers', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            if (_loading)
+            if (_loading && _users.isEmpty)
               const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
@@ -796,9 +901,21 @@ class _CampsiteCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         if (campsite.region.isNotEmpty)
-                          Text(
-                            campsite.region,
-                            style: const TextStyle(color: Colors.white70),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.place_outlined,
+                                size: 14,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  campsite.region,
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                            ],
                           ),
                         const SizedBox(height: 8),
                         CampsiteTagWrap(campsite: campsite),

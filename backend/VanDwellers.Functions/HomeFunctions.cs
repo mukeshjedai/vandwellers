@@ -55,7 +55,8 @@ public class HomeFunctions(VanDwellersApiService api, JwtTokenService jwt, IConf
                     ParseDouble(req.Form["latitude"].ToString()),
                     ParseDouble(req.Form["longitude"].ToString()),
                     ParseBool(req.Form["hasToilet"].ToString()),
-                    ParseBool(req.Form["hasTap"].ToString()));
+                    ParseBool(req.Form["hasTap"].ToString()),
+                    req.Form["address"].ToString());
 
                 foreach (var file in req.Form.Files)
                 {

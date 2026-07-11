@@ -141,6 +141,7 @@ class VanDwellersApi {
     required double longitude,
     required bool hasToilet,
     required bool hasTap,
+    String address = '',
     List<File> photos = const [],
   }) async {
     final request = http.MultipartRequest(
@@ -156,6 +157,7 @@ class VanDwellersApi {
     request.fields['longitude'] = longitude.toString();
     request.fields['hasToilet'] = hasToilet.toString();
     request.fields['hasTap'] = hasTap.toString();
+    request.fields['address'] = address;
 
     for (final photo in photos) {
       request.files.add(await http.MultipartFile.fromPath('files', photo.path));
