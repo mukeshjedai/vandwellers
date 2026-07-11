@@ -1,2 +1,2 @@
-4
-https://github.com/mukeshjedai/vandwellers/releases/download/v4/VanDwellers-release.apk
+5
+https://github.com/mukeshjedai/vandwellers/releases/download/v5/VanDwellers-release.apk
